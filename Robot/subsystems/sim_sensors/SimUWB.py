@@ -62,6 +62,7 @@ class SimUWB:
                     break
 
         self.interval = interval
+        self.batch_data = False
 
         # internal state
         self.is_connected = False
@@ -189,7 +190,10 @@ class SimUWB:
                 # Feed the EKF with tag position and offset
                 tag_pos_meas = np.array([pos.x, pos.y, pos.z], dtype=float)
                 # print(f"Feeding EKF with tag_id={tag_id}, position={tag_pos_meas}, offset={tag_offset}")
-                self.state_estimator.batch_uwb(tag_id, tag_pos_meas, tag_offset)
+                if self.batch_data:
+                    self.state_estimator.batch_uwb(tag_id, tag_pos_meas, tag_offset)
+                else:
+                    self.state_estimator.update_uwb_range(tag_pos_meas, tag_offset)
 
                 # advance index and sleep according to desired interval
                 idx += 1
