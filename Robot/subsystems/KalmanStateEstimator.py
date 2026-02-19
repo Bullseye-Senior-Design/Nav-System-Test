@@ -139,7 +139,7 @@ class KalmanStateEstimator:
             next_time += self.dt
             # Only run predict if filter has been initialized
             if self.is_initialized:
-                self.constant_velocity_predict()
+                self.predict()
             sleep_duration = next_time - time.time()
             if sleep_duration > 0:
                 time.sleep(sleep_duration)

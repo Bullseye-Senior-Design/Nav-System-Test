@@ -14,10 +14,12 @@ import logging
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Tuple, cast
 import numpy
+import numpy as np
 from Debug import Debug
 
 
 from Robot.subsystems.KalmanStateEstimator import KalmanStateEstimator
+from Robot.Constants import Constants
 
 logger = logging.getLogger(__name__)
 
@@ -84,17 +86,33 @@ class SimUWB:
         threading.Thread(target=self.start_continuous_reading, daemon=True).start()
 
     def _load_positions(self):
-        # positions CSV columns like: timestamp,x1,y1,z1,quality1,x2,y2,z2,quality2,...
+        # positions CSV columns: timestamp,tag_id,x,y,z,quality
         rows = []
         with open(self.positions_csv, newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 try:
                     ts = float(row.get('timestamp') or 0.0)
+                    tag_id = int(row.get('tag_id', 0))
+                    x = row.get('x', '')
+                    y = row.get('y', '')
+                    z = row.get('z', '')
+                    quality = row.get('quality', '')
+                    
+                    # Skip rows with missing position data
+                    if x == '' or y == '' or z == '':
+                        continue
+                    
+                    rows.append({
+                        'timestamp': ts,
+                        'tag_id': tag_id,
+                        'x': float(x),
+                        'y': float(y),
+                        'z': float(z),
+                        'quality': int(float(quality)) if quality != '' else 0
+                    })
                 except Exception:
                     continue
-
-                rows.append({'timestamp': ts, 'row': row})
 
         # sort by timestamp
         rows.sort(key=lambda r: r['timestamp'])
@@ -146,54 +164,32 @@ class SimUWB:
             while self.is_reading and idx < n:
                 entry = self._positions_timeline[idx]
                 ts = entry['timestamp']
-                row = entry['row']
+                tag_id = entry['tag_id']
+                x = entry['x']
+                y = entry['y']
+                z = entry['z']
+                quality = entry['quality']
 
-                # Collect all available position blocks in the row and average them
-                # fields come in groups like (x1,y1,z1,quality1),(x2,y2,z2,quality2),...
-                pos = None
-                pos_samples = []
-                # allow a generous number of groups in case CSV has many
-                for g in range(1, 50):
-                    xs = row.get(f'x{g}', '')
-                    ys = row.get(f'y{g}', '')
-                    zs = row.get(f'z{g}', '')
-                    qs = row.get(f'quality{g}', '')
-                    if xs not in (None, '') and ys not in (None, '') and zs not in (None, ''):
-                        try:
-                            x = float(xs)
-                            y = float(ys)
-                            z = float(zs)
-                            q = int(float(qs)) if qs not in (None, '') and qs != '' else 0
-                            pos_samples.append((x, y, z, q))
-                        except Exception:
-                            # skip malformed group
-                            continue
-
-                if pos_samples:
-                    nx = sum(p[0] for p in pos_samples) / len(pos_samples)
-                    ny = sum(p[1] for p in pos_samples) / len(pos_samples)
-                    nz = sum(p[2] for p in pos_samples) / len(pos_samples)
-                    nq = int(round(sum(p[3] for p in pos_samples) / len(pos_samples)))
-                    pos = Position(x=nx, y=ny, z=nz, quality=nq, timestamp=ts)
-                    # print(f"SimUWB position at ts={ts}: x={nx}, y={ny}, z={nz}, quality={nq}")
+                # Create position object
+                pos = Position(x=x, y=y, z=z, quality=quality, timestamp=ts)
 
                 # update tag_info
                 with self.position_lock:
                     self.tag_info['position'] = pos # type: ignore
                     # Store individual positions as a list of Position objects
-                    self.tag_info['individual_positions'] = [ # type: ignore
-                        Position(x=p[0], y=p[1], z=p[2], quality=p[3], timestamp=ts)
-                        for p in pos_samples
-                    ] if pos_samples else None 
+                    self.tag_info['individual_positions'] = [pos] # type: ignore
 
-                # if we have a valid (possibly averaged) position, feed the EKF like a real device
-                if pos is not None:
-                    tag_pos_meas = numpy.array([pos.x, pos.y, pos.z], dtype=float)
-                    # Send position to EKF with no offset
-                    # print("Feeding EKF with position:", tag_pos_meas)
-                    self.state_estimator.update_uwb_range(tag_pos_meas, None, False)
-                else:
-                    print("No valid position data available for EKF update.")
+                # Look up tag offset from Constants based on tag_id
+                tag_offset = None
+                for tag_data in Constants.uwb_tag_data:
+                    if tag_data.id == tag_id:
+                        tag_offset = np.array(tag_data.offset, dtype=float)
+                        break
+                
+                # Feed the EKF with tag position and offset
+                tag_pos_meas = np.array([pos.x, pos.y, pos.z], dtype=float)
+                # print(f"Feeding EKF with tag_id={tag_id}, position={tag_pos_meas}, offset={tag_offset}")
+                self.state_estimator.batch_uwb(tag_id, tag_pos_meas, tag_offset)
 
                 # advance index and sleep according to desired interval
                 idx += 1
