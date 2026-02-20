@@ -113,23 +113,28 @@ def analyze_uwb_positions(uwb_positions_df, ground_truth):
     print("UWB POSITIONS ANALYSIS")
     print("="*70)
 
-    # Extract UWB tag 1 and tag 2 positions
-    uwb_data = uwb_positions_df[['x1', 'y1', 'x2', 'y2']].copy()
+    # Separate tag 0 and tag 1 positions from new format (timestamp, tag_id, x, y, z, quality)
+    tag0_data = uwb_positions_df[uwb_positions_df['tag_id'] == 0][['x', 'y']].to_numpy()
+    tag1_data = uwb_positions_df[uwb_positions_df['tag_id'] == 1][['x', 'y']].to_numpy()
 
     # Collect tag-specific samples for plotting
-    tag1_positions = uwb_data[['x1', 'y1']].dropna(subset=['x1', 'y1']).to_numpy()
-    tag2_positions = uwb_data[['x2', 'y2']].dropna(subset=['x2', 'y2']).to_numpy()
+    tag1_positions = tag0_data  # tag 0 will be shown as tag 1 for backwards compatibility
+    tag2_positions = tag1_data  # tag 1 will be shown as tag 2
 
+    # Group by timestamp to find pairs of measurements
+    grouped = uwb_positions_df.groupby('timestamp')
+    
     # Average the two UWB positions when both are available (used for analysis)
     positions = []
-    for _, row in uwb_data.iterrows():
-        x1, y1, x2, y2 = row['x1'], row['y1'], row['x2'], row['y2']
-
+    for timestamp, group in grouped:
+        tag0 = group[group['tag_id'] == 0]
+        tag1 = group[group['tag_id'] == 1]
+        
         valid_positions = []
-        if pd.notna(x1) and pd.notna(y1):
-            valid_positions.append((x1, y1))
-        if pd.notna(x2) and pd.notna(y2):
-            valid_positions.append((x2, y2))
+        if not tag0.empty:
+            valid_positions.append((tag0.iloc[0]['x'], tag0.iloc[0]['y']))
+        if not tag1.empty:
+            valid_positions.append((tag1.iloc[0]['x'], tag1.iloc[0]['y']))
 
         if len(valid_positions) == 2:
             avg_x = (valid_positions[0][0] + valid_positions[1][0]) / 2

@@ -63,9 +63,9 @@ class KalmanStateEstimator:
         self.P[6:9, 6:9] = P_att
 
         # Process noise (continuous) in error-state (9x9)
-        q_pos = 1e-2
-        q_vel = 1e-1
-        q_att = 1e-1
+        q_pos = 1e-3
+        q_vel = 1e-4
+        q_att = 1e-3
         self.Qc = block_diag(np.eye(3) * q_pos, np.eye(3) * q_vel, np.eye(3) * q_att)
 
         # Measurement noise templates
@@ -78,7 +78,7 @@ class KalmanStateEstimator:
         self.R_encoder_velocity = (0.05 ** 2)  # 0.05 m/s sigma
         
         # Bicycle model parameters
-        self.L = 0.5  # Wheelbase: distance from rear to front axle [m]
+        self.L = 0.25  # Wheelbase: distance from rear to front axle [m]
         
         # Control inputs (updated externally before predict)
         self.u_velocity = 0.0  # Rear wheel velocity [m/s]
