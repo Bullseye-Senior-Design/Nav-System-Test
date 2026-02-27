@@ -365,7 +365,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
 if __name__ == "__main__":
     # Configure test parameters here
     path_type = PathType.SINWAVE
-    disturbance_model = DisturbanceModel.DRIFT
+    disturbance_model = DisturbanceModel.NONE
     timeout = 45  # None for unlimited, or set a value in seconds like 20.0
     
     test_path_following(path_type, disturbance_model, timeout)

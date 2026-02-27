@@ -38,7 +38,7 @@ class PathFollowing(Subsystem):
         self.L = 0.25
         self.v_nom = Constants.rear_motor_top_speed / 2.0
         self.ds = self.v_nom * self.Ts
-        self.ds_ref = 0.1  # Fixed arc-length spacing for reference trajectory (10 cm per MPC step)
+        self.ds_ref =  self.v_nom * self.Ts  # Fixed arc-length spacing for reference trajectory (10 cm per MPC step)
         
         # Weights (Q for state, R for input, Rd for rate of change, V for speed tracking)
         self.Q_diag = np.array([10.0, 10.0, 1.0])
@@ -231,6 +231,9 @@ class PathFollowing(Subsystem):
             clamped_percent = np.clip(speed_percent, -100, 100)
             self.v_nom = (clamped_percent / 100.0) * Constants.rear_motor_top_speed
             self.ds = self.v_nom * self.Ts
+            
+            self.ds_ref = self.v_nom * self.Ts  # Update reference spacing based on new speed
+            
             logger.debug(f"Set nominal speed: {speed_percent}% -> {self.v_nom:.3f} m/s")
     
     def get_nominal_speed(self):
