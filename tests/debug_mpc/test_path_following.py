@@ -227,7 +227,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
     print("Initializing MPC path following...")
     pf = PathFollowing()
     pf.set_path(path_matrix)
-    pf.set_nominal_speed(30)  # 30% of max speed
+    pf.set_nominal_speed(75)  # 30% of max speed
     
     # Replace the state estimator with dummy
     dummy_estimator = DummyStateEstimator()
