@@ -416,6 +416,15 @@ class PathFollowing(Subsystem):
                     self._last_u = np.array([v_cmd, delta_cmd])
                     self._x_prev = res['x']
                 
+                # Check for zero velocity command when not at goal
+                distance_to_goal = self._get_distance_to_goal(cur_state)
+                if abs(v_cmd) < 0.01 and distance_to_goal is not None and distance_to_goal > self.goal_tolerance:
+                    logger.error(
+                        "MPC commanding zero velocity but not at goal! Distance to goal: %.3f m (tolerance: %.3f m)",
+                        distance_to_goal,
+                        self.goal_tolerance
+                    )
+                
                 elapsed = time.time() - start_time
                 logger.debug(
                     "MPC: V=%.2f m/s | δ=%.1f° | Pos=(%.2f, %.2f) | Time=%.3fs",
