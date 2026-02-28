@@ -9,7 +9,7 @@ from structure.Subsystem import Subsystem
 from Robot.Constants import Constants
 
 logger = logging.getLogger(f"{__name__}.PathFollowing")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 # TODO Test changing cost function to Frenet Frame
 
@@ -44,9 +44,9 @@ class PathFollowing(Subsystem):
         
         # Weights (Q for state, R for input, Rd for rate of change, V for speed tracking)
         self.Q_diag = np.array([3.0, 10.0]) # Weights for cross-track error (lateral), heading error (yaw), and unused component
-        self.Q_terminal_diag = np.array([1.0, 1.0, 1.0]) # Terminal weights for final state - higher to emphasize goal reaching
+        self.Q_terminal_diag = np.array([5.0, 5.0, 1.0]) # Terminal weights for final state - higher to emphasize goal reaching
         self.R_diag = np.array([0.1, 0.1]) # Penalize large control inputs, probably not needed for our application
-        self.Rd_diag = np.array([10.0, 20.0]) # Penalize large changes in the outputs, prevents the steering from oscillating between two extremes
+        self.Rd_diag = np.array([1.0, 5.0]) # Penalize large changes in the outputs, prevents the steering from oscillating between two extremes
         self.V_weight = 5.0  # Weight for speed tracking cost 
         
         # Constraints
@@ -83,7 +83,7 @@ class PathFollowing(Subsystem):
         self._x_prev = None  # For warm starting
         
         # Path completion tracking
-        self.goal_tolerance = 0.1  # meters - distance threshold to consider goal reached
+        self.goal_tolerance = 0.01  # meters - distance threshold to consider goal reached
         
         # Get reference to state estimator
         self.state_estimator = KalmanStateEstimator()
@@ -208,41 +208,57 @@ class PathFollowing(Subsystem):
         from speed control. Speed is handled separately via the speed reference trajectory.
         """
         if self.path_matrix is None:
-            return np.zeros((self.p + 1, 3))
+            return np.zeros((self.p + 1, 3)), 0.0, 0.0
         
         x_wp = self.path_matrix[:, 0]
         y_wp = self.path_matrix[:, 1]
         theta_wp = self.path_matrix[:, 2]
         
-        # Compute cumulative arc-length of waypoints
-        dx, dy = np.diff(x_wp), np.diff(y_wp)
-        s_wp = np.cumsum(np.sqrt(dx**2 + dy**2))
-        s_wp = np.insert(s_wp, 0, 0.0)
+        # Compute cumulative arc-length (cache it)
+        if self._s_wp is None:
+            dx, dy = np.diff(x_wp), np.diff(y_wp)
+            s_wp = np.cumsum(np.sqrt(dx**2 + dy**2))
+            s_wp = np.insert(s_wp, 0, 0.0)
+            self._s_wp = s_wp
+        s_wp = self._s_wp
         
-        # Create interpolators for x, y, and theta as functions of arc-length
-        interp_x = interp1d(s_wp, x_wp, kind='cubic', fill_value='extrapolate')
-        interp_y = interp1d(s_wp, y_wp, kind='cubic', fill_value='extrapolate')
+        interp_x     = interp1d(s_wp, x_wp,     kind='cubic', fill_value='extrapolate')
+        interp_y     = interp1d(s_wp, y_wp,     kind='cubic', fill_value='extrapolate')
         interp_theta = interp1d(s_wp, theta_wp, kind='cubic', fill_value='extrapolate')
         
-        # Find closest point on path to current state
-        distances = np.sqrt((x_wp - cur_state[0])**2 + (y_wp - cur_state[1])**2)
-        closest_idx = np.argmin(distances)
+        # Only search AHEAD of current progress (within 2x lookahead window)
+        # This prevents noise from jumping s_cur backwards
+        lookahead = abs(self.v_nom) * self.p * self.Ts * 2.0
+        search_start = np.searchsorted(s_wp, max(0.0, self._s_cur - 0.05))  # tiny lookback allowed
+        search_end   = np.searchsorted(s_wp, min(s_wp[-1], self._s_cur + lookahead))
+        search_end   = max(search_end, search_start + 2)  # ensure at least 2 points
         
-        # Interpolate arc-length at robot's position for better accuracy
-        if closest_idx == len(x_wp) - 1:
+        distances = np.sqrt(
+            (x_wp[search_start:search_end] - cur_state[0])**2 + 
+            (y_wp[search_start:search_end] - cur_state[1])**2
+        )
+        closest_idx = np.argmin(distances) + search_start
+        
+        if closest_idx >= len(x_wp) - 1:
             s_cur = s_wp[-1]
         else:
-            # Linear interpolation between two closest waypoints
-            sum_distances = distances[closest_idx] + distances[closest_idx + 1]
-            alpha = distances[closest_idx] / sum_distances if sum_distances > 0 else 0
+            d0 = distances[closest_idx - search_start]
+            d1 = distances[min(closest_idx - search_start + 1, len(distances) - 1)]
+            total = d0 + d1
+            alpha = d0 / total if total > 0 else 0.0
             s_cur = s_wp[closest_idx] * (1 - alpha) + s_wp[closest_idx + 1] * alpha
         
-        # Fixed arc-length spacing (independent of speed changes)
+        # KEY FIX: never allow progress to go backwards
+        self._s_cur = max(self._s_cur, s_cur)
+        s_cur = self._s_cur
+        
+        # Generate reference points ahead
         ref = np.zeros((self.p + 1, 3))
         for i in range(self.p + 1):
             s_f = min(s_cur + i * self.ds_ref, s_wp[-1])
             ref[i, :] = [interp_x(s_f), interp_y(s_f), interp_theta(s_f)]
-        return ref
+        
+        return ref, s_cur, s_wp[-1]
     
     def set_path(self, path_matrix):
         """Set the path to follow.
@@ -252,6 +268,8 @@ class PathFollowing(Subsystem):
         """
         with self._lock:
             self.path_matrix = np.asarray(path_matrix, dtype=float)
+            self._s_wp = None   # Invalidate cached arc-length when path changes
+            self._s_cur = 0.0
     
     def set_nominal_speed(self, speed_percent):
         """Set the desired nominal speed for path following.
@@ -320,6 +338,7 @@ class PathFollowing(Subsystem):
             self._thread = threading.Thread(target=self._control_loop, daemon=True)
             self._thread.start()
             logger.info("MPC path following started")
+            self._s_cur = 0.0  # Reset progress on each new run
     
     def stop_path_following(self):
         """Stop the MPC path following."""
@@ -413,11 +432,17 @@ class PathFollowing(Subsystem):
                                      self.state_estimator.euler[2]])  # x, y, yaw
                 
                 # Generate reference trajectory
-                refs = self._generate_reference(cur_state)
+                refs, s_cur, s_total = self._generate_reference(cur_state)
                 
-                # Generate speed reference trajectory (constant nominal speed)
+                # Taper speed to zero near end of path
                 with self._lock:
                     v_nom_current = self.v_nom
+                remaining = s_total - s_cur
+                decel_dist = abs(v_nom_current) * self.p * self.Ts
+                if decel_dist > 0 and remaining < decel_dist:
+                    speed_scale = max(0.0, remaining / decel_dist)
+                    logger.debug(f"Decelerating: remaining={remaining:.2f} m, decel_dist={decel_dist:.2f} m, speed_scale={speed_scale:.2f}")
+                    v_nom_current *= speed_scale
                 v_ref = np.full(self.p + 1, v_nom_current)
                 
                 # Prepare parameters
