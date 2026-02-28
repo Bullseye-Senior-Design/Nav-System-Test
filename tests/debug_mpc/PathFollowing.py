@@ -43,7 +43,7 @@ class PathFollowing(Subsystem):
         self.ds_ref =  self.v_nom * self.Ts  
         
         # Weights (Q for state, R for input, Rd for rate of change, V for speed tracking)
-        self.Q_diag = np.array([10.0, 10.0, 1.0]) # Weights for x, y, theta position
+        self.Q_diag = np.array([10.0, 10.0, 1.0]) # Weights for cross-track error (lateral), heading error (yaw), and unused component
         self.R_diag = np.array([0.1, 0.1]) # Penalize large control inputs, probably not needed for our application
         self.Rd_diag = np.array([1.0, 5.0]) # Penalize large changes in the outputs, prevents the steering from oscillating between two extremes
         self.V_weight = 5.0  # Weight for speed tracking cost 
@@ -88,7 +88,7 @@ class PathFollowing(Subsystem):
         self.state_estimator = KalmanStateEstimator()
     
     def _setup_mpc(self):
-        """Setup the MPC solver using CasADi."""
+        """Setup the MPC solver using CasADi with Frenet Frame cost function."""
         # Symbolic states
         x = ca.SX.sym('x')
         y = ca.SX.sym('y')
@@ -128,14 +128,37 @@ class PathFollowing(Subsystem):
         for k in range(self.p):
             st = X[:, k]
             con = U[:, k]
+            ref_pose = ref_traj[:, k]
             
-            # Tracking cost
-            cost_fn += ca.mtimes([(st - ref_traj[:, k]).T, np.diag(self.Q_diag), 
-                                  (st - ref_traj[:, k])])
+            # Compute cross-track error (Frenet Frame)
+            # Vector from reference point to actual position
+            dx = st[0] - ref_pose[0]
+            dy = st[1] - ref_pose[1]
+            ref_theta = ref_pose[2]
+            
+            # Rotate to Frenet frame: cross-track error is perpendicular to path
+            # e_lateral = -dx * sin(theta_ref) + dy * cos(theta_ref)
+            e_lateral = -dx * ca.sin(ref_theta) + dy * ca.cos(ref_theta)
+            
+            # Heading error (yaw deviation from reference)
+            e_heading = st[2] - ref_pose[2]
+            
+            # Normalize heading error to [-pi, pi]
+            e_heading = ca.atan2(ca.sin(e_heading), ca.cos(e_heading))
+            
+            # Frenet Frame cost: penalize cross-track error and heading error
+            # Q_diag[0] now weights cross-track error (lateral deviation)
+            # Q_diag[1] weights heading error
+            # Q_diag[2] is unused in Frenet but kept for compatibility
+            cost_fn += self.Q_diag[0] * e_lateral**2
+            cost_fn += self.Q_diag[1] * e_heading**2
+            
             # Input effort cost
             cost_fn += ca.mtimes([con.T, np.diag(self.R_diag), con])
+            
             # Speed tracking cost (track desired speed reference)
             cost_fn += self.V_weight * (con[0] - v_ref[k])**2
+            
             # Smoothness cost
             u_compare = u_prev if k == 0 else U[:, k-1]
             cost_fn += ca.mtimes([(con - u_compare).T, np.diag(self.Rd_diag), 
@@ -147,9 +170,16 @@ class PathFollowing(Subsystem):
             st_next_euler = st + (self.Ts * f_value)
             g.append(st_next - st_next_euler)
         
-        # Terminal cost
-        cost_fn += ca.mtimes([(X[:, self.p] - ref_traj[:, self.p]).T, 
-                             np.diag(self.Q_diag), (X[:, self.p] - ref_traj[:, self.p])])
+        # Terminal cost (Frenet Frame)
+        dx_term = X[0, self.p] - ref_traj[0, self.p]
+        dy_term = X[1, self.p] - ref_traj[1, self.p]
+        ref_theta_term = ref_traj[2, self.p]
+        e_lateral_term = -dx_term * ca.sin(ref_theta_term) + dy_term * ca.cos(ref_theta_term)
+        e_heading_term = X[2, self.p] - ref_traj[2, self.p]
+        e_heading_term = ca.atan2(ca.sin(e_heading_term), ca.cos(e_heading_term))
+        
+        cost_fn += self.Q_diag[0] * e_lateral_term**2
+        cost_fn += self.Q_diag[1] * e_heading_term**2
         
         # Reshape for solver
         opt_vars = ca.vertcat(ca.reshape(X, -1, 1), ca.reshape(U, -1, 1))
