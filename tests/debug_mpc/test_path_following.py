@@ -141,9 +141,6 @@ def simulate_bicycle_model(state, v_cmd, delta_cmd, dt=0.1, L=0.25):
     y_new = y + y_dot * dt
     theta_new = theta + theta_dot * dt
     
-    # Constrain theta to [-pi, pi]
-    theta_new = np.arctan2(np.sin(theta_new), np.cos(theta_new))
-    
     return np.array([x_new, y_new, theta_new])
 
 
@@ -202,10 +199,7 @@ def apply_disturbance(state, v_cmd, disturbance_model=DisturbanceModel.NONE, tim
         state[0] += np.random.normal(0, 0.015)
         state[1] += np.random.normal(0, 0.015)
         state[2] += np.random.normal(0, 0.02)
-    
-    # Constrain theta to [-pi, pi]
-    state[2] = np.arctan2(np.sin(state[2]), np.cos(state[2]))
-    
+        
     return state
 
 
@@ -220,7 +214,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
     
     print(f"Creating {path_type.value} reference path...")
     if path_type == PathType.SINWAVE:
-        path_matrix = create_sinwave_reference_path(length=2.5, amplitude=0.25, frequency=1.5, num_points=60)
+        path_matrix = create_sinwave_reference_path(length=5.0, amplitude=0.5, frequency=1.5, num_points=60)
         max_time = timeout if timeout is not None else 40.0
         title_suffix = " (Sinusoidal Path)"
     else:
@@ -245,7 +239,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
     pf.start_path_following()
     
     # Simulation loop
-    current_state = np.array([0.0, 0.0, -np.pi])  # Start with some initial heading error
+    current_state = np.array([0.0, 0.0, 0.0])  # Start with some initial heading error
     dummy_estimator.set_state(*current_state)
     
     history_state = [current_state.copy()]
@@ -371,7 +365,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
 
 if __name__ == "__main__":
     # Configure test parameters here
-    path_type = PathType.SINWAVE
+    path_type = PathType.STRAIGHT
     disturbance_model = DisturbanceModel.NOISE
     timeout = 80  # None for unlimited, or set a value in seconds like 20.0
     
