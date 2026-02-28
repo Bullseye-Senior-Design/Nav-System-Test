@@ -243,7 +243,7 @@ class PathFollowing(Subsystem):
             s_f = min(s_cur + i * self.ds_ref, s_wp[-1])
             ref[i, :] = [interp_x(s_f), interp_y(s_f), interp_theta(s_f)]
         
-        return ref, s_cur, s_wp[-1]
+        return ref
     
     def set_path(self, path_matrix):
         """Set the path to follow.
