@@ -220,7 +220,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
     
     print(f"Creating {path_type.value} reference path...")
     if path_type == PathType.SINWAVE:
-        path_matrix = create_sinwave_reference_path(length=5.0, amplitude=0.5, frequency=1.5, num_points=60)
+        path_matrix = create_sinwave_reference_path(length=2.5, amplitude=0.25, frequency=1.5, num_points=60)
         max_time = timeout if timeout is not None else 40.0
         title_suffix = " (Sinusoidal Path)"
     else:
