@@ -43,7 +43,7 @@ class PathFollowing(Subsystem):
         self.ds_ref =  self.v_nom * self.Ts  
         
         # Weights (Q for state, R for input, Rd for rate of change, V for speed tracking)
-        self.Q_diag = np.array([10.0, 10.0]) # Weights for cross-track error (lateral), heading error (yaw), and unused component
+        self.Q_diag = np.array([10.0, 15.0]) # Weights for cross-track error (lateral), heading error (yaw), and unused component
         self.Q_terminal_diag = np.array([5.0, 5.0, 1.0]) # Terminal weights for final state - higher to emphasize goal reaching
         self.R_diag = np.array([0.1, 0.1]) # Penalize large control inputs, probably not needed for our application
         self.Rd_diag = np.array([3.0, 5.0]) # Penalize large changes in the outputs, prevents the steering from oscillating between two extremes
