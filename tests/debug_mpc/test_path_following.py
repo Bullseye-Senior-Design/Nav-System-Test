@@ -11,6 +11,8 @@ from enum import Enum
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from Robot.Constants import Constants
+from tests.debug_mpc.PathFollowing import PathFollowing
+
 
 
 class PathType(Enum):
@@ -201,7 +203,7 @@ def apply_disturbance(state, v_cmd, disturbance_model=DisturbanceModel.NONE, tim
     return state
 
 
-def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=DisturbanceModel.NONE, timeout=None):
+def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=DisturbanceModel.NONE, timeout=None, nominal_speed_percent=75):
     """Test the MPC path following with dummy feedback.
     
     Args:
@@ -209,7 +211,6 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
         disturbance_model: DisturbanceModel enum specifying the disturbance model
         timeout: Maximum simulation time in seconds (None for unlimited)
     """
-    from tests.debug_mpc.PathFollowing import PathFollowing
     
     print(f"Creating {path_type.value} reference path...")
     if path_type == PathType.SINWAVE:
@@ -227,7 +228,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
     print("Initializing MPC path following...")
     pf = PathFollowing()
     pf.set_path(path_matrix)
-    pf.set_nominal_speed(30)  # 30% of max speed
+    pf.set_nominal_speed(nominal_speed_percent)  # 30% of max speed
     
     # Replace the state estimator with dummy
     dummy_estimator = DummyStateEstimator()
@@ -238,7 +239,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
     pf.start_path_following()
     
     # Simulation loop
-    current_state = np.array([0.0, 0.0, 0.0])
+    current_state = np.array([0.0, 0.0, -np.pi])  # Start with some initial heading error
     dummy_estimator.set_state(*current_state)
     
     history_state = [current_state.copy()]
@@ -365,7 +366,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
 if __name__ == "__main__":
     # Configure test parameters here
     path_type = PathType.SINWAVE
-    disturbance_model = DisturbanceModel.NONE
-    timeout = 45  # None for unlimited, or set a value in seconds like 20.0
+    disturbance_model = DisturbanceModel.NOISE
+    timeout = 80  # None for unlimited, or set a value in seconds like 20.0
     
     test_path_following(path_type, disturbance_model, timeout)

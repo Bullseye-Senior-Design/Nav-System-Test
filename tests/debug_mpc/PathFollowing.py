@@ -11,6 +11,7 @@ from Robot.Constants import Constants
 logger = logging.getLogger(f"{__name__}.PathFollowing")
 logger.setLevel(logging.INFO)
 
+# TODO Test changing cost function to Frenet Frame
 
 class PathFollowing(Subsystem):
     """Model Predictive Control Navigator for path following.
@@ -34,15 +35,16 @@ class PathFollowing(Subsystem):
         # Parameters & Constants
         # ────────────────────────────────────────────────
         self.Ts = 0.1
-        self.p = 20 # 12 may be better for computation capacity
+        self.p = 12 # 12 may be better for computation capacity
         self.L = 0.25
+        # crusing speed for reference trajectory generation, can be adjusted via set_nominal_speed() method
         self.v_nom = Constants.rear_motor_top_speed / 2.0
         self.ds = self.v_nom * self.Ts
-        self.ds_ref =  self.v_nom * self.Ts  # Fixed arc-length spacing for reference trajectory (10 cm per MPC step)
+        self.ds_ref =  self.v_nom * self.Ts  
         
         # Weights (Q for state, R for input, Rd for rate of change, V for speed tracking)
-        self.Q_diag = np.array([20.0, 20.0, 0.0]) # Weights for x, y, theta position
-        self.R_diag = np.array([0.0, 0.0]) # Penalize large control inputs, probably not needed for our application
+        self.Q_diag = np.array([10.0, 10.0, 1.0]) # Weights for x, y, theta position
+        self.R_diag = np.array([0.1, 0.1]) # Penalize large control inputs, probably not needed for our application
         self.Rd_diag = np.array([1.0, 5.0]) # Penalize large changes in the outputs, prevents the steering from oscillating between two extremes
         self.V_weight = 5.0  # Weight for speed tracking cost 
         
