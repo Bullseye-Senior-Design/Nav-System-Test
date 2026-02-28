@@ -57,8 +57,8 @@ def plot_reference_csv(folder: str | None = None, ax = None) -> str:
 					merged_sparse = merged.iloc[::step]
 
 					# Plot velocity vectors (scaled for visibility)
-					scale = 0.2
-					direction_scale = 0.03
+					scale = 0.5
+					direction_scale = 0.1
 					for _, row in merged_sparse.iterrows():
 						px, py = row["px"], row["py"]
 						yaw = np.radians(row["yaw"])
@@ -73,13 +73,13 @@ def plot_reference_csv(folder: str | None = None, ax = None) -> str:
 						vx = speed * np.cos(heading) * scale
 						vy = speed * np.sin(heading) * scale
 
-						ax.arrow(px, py, vx, vy, head_width=0.03, head_length=0.03,
+						ax.arrow(px, py, vx, vy, head_width=0.2, head_length=0.2,
 								fc="red", ec="red", alpha=0.6, linewidth=1)
 
 						# Robot direction vector (based on yaw angle)
 						dir_x = np.cos(yaw) * direction_scale
 						dir_y = np.sin(yaw) * direction_scale
-						ax.arrow(px, py, dir_x, dir_y, head_width=0.015, head_length=0.015,
+						ax.arrow(px, py, dir_x, dir_y, head_width=0.1, head_length=0.1,
 								fc="blue", ec="blue", alpha=0.7, linewidth=1)
 
 	ax.set_xlabel("x (m)")
