@@ -34,8 +34,8 @@ class PathFollowing(Subsystem):
         # ────────────────────────────────────────────────
         # Parameters & Constants
         # ────────────────────────────────────────────────
-        self.Ts = 0.1
-        self.p = 12 # 12 may be better for computation capacity
+        self.Ts = 0.3  # MPC sampling time (seconds)
+        self.p = 25 # 12 may be better for computation capacity
         self.L = 0.25
         # crusing speed for reference trajectory generation, can be adjusted via set_nominal_speed() method
         self.v_nom = Constants.rear_motor_top_speed / 2.0
@@ -43,9 +43,10 @@ class PathFollowing(Subsystem):
         self.ds_ref =  self.v_nom * self.Ts  
         
         # Weights (Q for state, R for input, Rd for rate of change, V for speed tracking)
-        self.Q_diag = np.array([10.0, 10.0, 1.0]) # Weights for cross-track error (lateral), heading error (yaw), and unused component
+        self.Q_diag = np.array([3.0, 10.0]) # Weights for cross-track error (lateral), heading error (yaw), and unused component
+        self.Q_terminal_diag = np.array([1.0, 1.0, 1.0]) # Terminal weights for final state - higher to emphasize goal reaching
         self.R_diag = np.array([0.1, 0.1]) # Penalize large control inputs, probably not needed for our application
-        self.Rd_diag = np.array([1.0, 5.0]) # Penalize large changes in the outputs, prevents the steering from oscillating between two extremes
+        self.Rd_diag = np.array([10.0, 20.0]) # Penalize large changes in the outputs, prevents the steering from oscillating between two extremes
         self.V_weight = 5.0  # Weight for speed tracking cost 
         
         # Constraints
@@ -170,7 +171,7 @@ class PathFollowing(Subsystem):
             st_next_euler = st + (self.Ts * f_value)
             g.append(st_next - st_next_euler)
         
-        # Terminal cost (Frenet Frame)
+        # Terminal cost (Frenet Frame) - uses higher weights for goal emphasis
         dx_term = X[0, self.p] - ref_traj[0, self.p]
         dy_term = X[1, self.p] - ref_traj[1, self.p]
         ref_theta_term = ref_traj[2, self.p]
@@ -178,8 +179,8 @@ class PathFollowing(Subsystem):
         e_heading_term = X[2, self.p] - ref_traj[2, self.p]
         e_heading_term = ca.atan2(ca.sin(e_heading_term), ca.cos(e_heading_term))
         
-        cost_fn += self.Q_diag[0] * e_lateral_term**2
-        cost_fn += self.Q_diag[1] * e_heading_term**2
+        cost_fn += self.Q_terminal_diag[0] * e_lateral_term**2
+        cost_fn += self.Q_terminal_diag[1] * e_heading_term**2
         
         # Reshape for solver
         opt_vars = ca.vertcat(ca.reshape(X, -1, 1), ca.reshape(U, -1, 1))

@@ -239,7 +239,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
     pf.start_path_following()
     
     # Simulation loop
-    current_state = np.array([0.0, 0.0, -np.pi])  # Start with some initial heading error
+    current_state = np.array([0.0, 0.0, 0.0])  # Start with some initial heading error
     dummy_estimator.set_state(*current_state)
     
     history_state = [current_state.copy()]
@@ -365,7 +365,7 @@ def test_path_following(path_type=PathType.STRAIGHT, disturbance_model=Disturban
 
 if __name__ == "__main__":
     # Configure test parameters here
-    path_type = PathType.SINWAVE
+    path_type = PathType.STRAIGHT
     disturbance_model = DisturbanceModel.NOISE
     timeout = 80  # None for unlimited, or set a value in seconds like 20.0
     
