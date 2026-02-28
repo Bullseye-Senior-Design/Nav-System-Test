@@ -43,11 +43,11 @@ class PathFollowing(Subsystem):
         self.ds_ref =  self.v_nom * self.Ts  
         
         # Weights (Q for state, R for input, Rd for rate of change, V for speed tracking)
-        self.Q_diag = np.array([3.0, 10.0]) # Weights for cross-track error (lateral), heading error (yaw), and unused component
-        self.Q_terminal_diag = np.array([1.0, 1.0, 1.0]) # Terminal weights for final state - higher to emphasize goal reaching
+        self.Q_diag = np.array([10.0, 10.0]) # Weights for cross-track error (lateral), heading error (yaw), and unused component
+        self.Q_terminal_diag = np.array([5.0, 5.0, 1.0]) # Terminal weights for final state - higher to emphasize goal reaching
         self.R_diag = np.array([0.1, 0.1]) # Penalize large control inputs, probably not needed for our application
-        self.Rd_diag = np.array([10.0, 20.0]) # Penalize large changes in the outputs, prevents the steering from oscillating between two extremes
-        self.V_weight = 5.0  # Weight for speed tracking cost 
+        self.Rd_diag = np.array([3.0, 5.0]) # Penalize large changes in the outputs, prevents the steering from oscillating between two extremes
+        self.V_weight = 20.0  # Weight for speed tracking cost 
         
         # Constraints
         self.v_bounds = [-Constants.rear_motor_top_speed, Constants.rear_motor_top_speed]
@@ -142,17 +142,14 @@ class PathFollowing(Subsystem):
             e_lateral = -dx * ca.sin(ref_theta) + dy * ca.cos(ref_theta)
             
             # Heading error (yaw deviation from reference)
-            e_heading = st[2] - ref_pose[2]
-            
-            # Normalize heading error to [-pi, pi]
-            e_heading = ca.atan2(ca.sin(e_heading), ca.cos(e_heading))
-            
+            # Heading error (yaw deviation from reference)
+            yaw_diff = st[2] - ref_pose[2]
+
             # Frenet Frame cost: penalize cross-track error and heading error
-            # Q_diag[0] now weights cross-track error (lateral deviation)
-            # Q_diag[1] weights heading error
-            # Q_diag[2] is unused in Frenet but kept for compatibility
             cost_fn += self.Q_diag[0] * e_lateral**2
-            cost_fn += self.Q_diag[1] * e_heading**2
+            # 1 - cos(x) acts like a perfectly smooth (x^2)/2 near zero, without wrap-around discontinuities! 
+            # We multiply by 2.0 to keep roughly the same tuning magnitude as your previous squared error.
+            cost_fn += self.Q_diag[1] * 2.0 * (1.0 - ca.cos(yaw_diff))
             
             # Input effort cost
             cost_fn += ca.mtimes([con.T, np.diag(self.R_diag), con])
@@ -409,8 +406,9 @@ class PathFollowing(Subsystem):
             try:
                 # Get current state from Kalman filter
                 state = self.state_estimator.get_state()
-                cur_state = np.array([state.pos[0], state.pos[1], 
-                                     self.state_estimator.euler[2]])  # x, y, yaw
+                yaw = self.state_estimator.euler[2]
+                yaw = (yaw + np.pi) % (2 * np.pi) - np.pi  # Normalize to [-pi, pi]
+                cur_state = np.array([state.pos[0], state.pos[1], yaw])  # x, y, yaw
                 
                 # Generate reference trajectory
                 refs = self._generate_reference(cur_state)
