@@ -4,6 +4,13 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+"""
+state_estimator.csv
+uwb_positions.csv
+reference csv file
+path_following.csv
+"""
+
 
 def plot_reference_csv(folder: str | None = None, ax = None) -> str:
 	"""Plot the first CSV in folder that starts with 'reference'.
