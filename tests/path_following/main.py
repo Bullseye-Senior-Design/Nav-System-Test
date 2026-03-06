@@ -12,6 +12,64 @@ path_following.csv
 """
 
 
+def _rmse_to_reference_path(localization_points: np.ndarray, reference_points: np.ndarray, chunk_size: int = 2000) -> float:
+	"""Compute RMSE from localization points to nearest reference path points."""
+	if localization_points.size == 0:
+		raise ValueError("No localization points provided for RMSE calculation")
+	if reference_points.size == 0:
+		raise ValueError("No reference points provided for RMSE calculation")
+
+	min_sq_distances = np.empty(len(localization_points), dtype=float)
+
+	for start in range(0, len(localization_points), chunk_size):
+		end = min(start + chunk_size, len(localization_points))
+		chunk = localization_points[start:end]
+		delta = chunk[:, None, :] - reference_points[None, :, :]
+		sq_dist = np.sum(delta * delta, axis=2)
+		min_sq_distances[start:end] = np.min(sq_dist, axis=1)
+
+	return float(np.sqrt(np.mean(min_sq_distances)))
+
+
+def calculate_localization_rmse(folder: str | None = None) -> dict[str, float]:
+	"""Calculate RMSE from localization outputs to the reference path."""
+	base_dir = folder or os.path.dirname(__file__)
+	pattern = os.path.join(base_dir, "reference*.csv")
+	matches = sorted(glob.glob(pattern))
+	if not matches:
+		raise FileNotFoundError(f"No reference CSV found in {base_dir}")
+
+	ref_df = pd.read_csv(matches[0])
+	if not {"x", "y"}.issubset(ref_df.columns):
+		raise ValueError("Reference CSV must include 'x' and 'y' columns")
+	reference_points = ref_df[["x", "y"]].dropna().to_numpy(dtype=float)
+
+	results: dict[str, float] = {}
+
+	state_path = os.path.join(base_dir, "state_estimator.csv")
+	if os.path.exists(state_path):
+		state_df = pd.read_csv(state_path)
+		if {"px", "py"}.issubset(state_df.columns):
+			state_points = state_df[["px", "py"]].dropna().to_numpy(dtype=float)
+			if len(state_points) > 0:
+				results["state_estimator_rmse_m"] = _rmse_to_reference_path(state_points, reference_points)
+
+	uwb_path = os.path.join(base_dir, "uwb_positions.csv")
+	if os.path.exists(uwb_path):
+		uwb_df = pd.read_csv(uwb_path)
+		if {"x", "y", "tag_id"}.issubset(uwb_df.columns):
+			for tag_id in sorted(uwb_df["tag_id"].dropna().unique()):
+				tag_points = uwb_df.loc[uwb_df["tag_id"] == tag_id, ["x", "y"]].dropna().to_numpy(dtype=float)
+				if len(tag_points) > 0:
+					results[f"uwb_tag_{tag_id}_rmse_m"] = _rmse_to_reference_path(tag_points, reference_points)
+		elif {"x", "y"}.issubset(uwb_df.columns):
+			uwb_points = uwb_df[["x", "y"]].dropna().to_numpy(dtype=float)
+			if len(uwb_points) > 0:
+				results["uwb_rmse_m"] = _rmse_to_reference_path(uwb_points, reference_points)
+
+	return results
+
+
 def plot_reference_csv(folder: str | None = None, ax = None) -> str:
 	"""Plot the first CSV in folder that starts with 'reference'.
 
@@ -150,9 +208,9 @@ def plot_position_comparison(folder: str | None = None, ax = None) -> str:
 			for idx, tag_id in enumerate(sorted(uwb_df["tag_id"].unique())):
 				tag_data = uwb_df[uwb_df["tag_id"] == tag_id].sort_values("timestamp")
 				color = colors[idx % len(colors)]
-				ax.plot(tag_data["x"], tag_data["y"], label=f"UWB Tag {tag_id}", linewidth=2, color=color, linestyle="--")
+				ax.scatter(tag_data["x"], tag_data["y"], label=f"UWB Tag {tag_id}", color=color, s=12, alpha=0.9)
 		elif {"x", "y"}.issubset(uwb_df.columns):
-			ax.plot(uwb_df["x"], uwb_df["y"], label="UWB positions", linewidth=2, color="purple", linestyle="--")
+			ax.scatter(uwb_df["x"], uwb_df["y"], label="UWB positions", color="purple", s=12, alpha=0.9)
 
 
 	ax.set_xlabel("x (m)")
@@ -182,5 +240,13 @@ def plot_side_by_side(folder: str | None = None) -> None:
 
 
 if __name__ == "__main__":
+	rmse_results = calculate_localization_rmse()
+	if rmse_results:
+		print("\nLocalization RMSE to reference path:")
+		for metric, value in rmse_results.items():
+			print(f"- {metric}: {value:.4f} m")
+	else:
+		print("No localization data found for RMSE calculation.")
+
 	plot_side_by_side()
 
