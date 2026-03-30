@@ -4,7 +4,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 # Define ground truth waypoints (x, y positions)
-table_size = [((2.667, 0.914), (4.191, 0.914)), ((4.191, 0.914), (4.191, 4.595)), ((4.191, 4.595), (2.667, 4.595)), ((2.667, 4.595), (2.667, 0.914))]
+table_size = [((2.667, -0.914), (4.191, -0.914)), ((4.191, -0.914), (4.191, -4.595)), ((4.191, -4.595), (2.667, -4.595)), ((2.667, -4.595), (2.667, -0.914))]
 
 def load_csv_files(data_dir):
     """Load state estimator and UWB position CSV files."""
